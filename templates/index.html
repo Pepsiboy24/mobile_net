@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="TrustTag - AI-powered counterfeit product detection">
+    <title>TrustTag - Counterfeit Detection</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
+    
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('ServiceWorker registration failed: ', error);
+                    });
+            });
+        }
+    </script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .upload-area {
+            border: 2px dashed #cbd5e1;
+            transition: all 0.3s ease;
+        }
+        .upload-area.dragover {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        .result-card {
+            animation: slideUp 0.5s ease-out;
+        }
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .confidence-bar {
+            transition: width 0.8s ease-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen gradient-bg">
+    <!-- Header -->
+    <header class="glass-effect shadow-lg sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <span class="text-white text-xl">🔍</span>
+                    </div>
+                    <h1 class="text-2xl font-bold text-gray-800">TrustTag</h1>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                        AI Powered
+                    </span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8">
+        <!-- Hero Section -->
+        <section class="text-center mb-8">
+            <h2 class="text-3xl font-bold text-white mb-4">
+                Detect Counterfeit Products Instantly
+            </h2>
+            <p class="text-white/90 text-lg max-w-2xl mx-auto">
+                Upload a product image to verify its authenticity using advanced AI technology.
+                Supporting Samsung, Oraimo, and counterfeit detection.
+            </p>
+        </section>
+
+        <!-- Upload Section -->
+        <section class="max-w-2xl mx-auto mb-8">
+            <div class="glass-effect rounded-2xl shadow-xl p-6">
+                <div class="upload-area rounded-xl p-8 text-center cursor-pointer hover:bg-gray-50 transition-colors"
+                     id="uploadArea">
+                    <div class="mb-4">
+                        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-semibold text-gray-800 mb-2">
+                            Scan/Upload Product Image
+                        </h3>
+                        <p class="text-gray-600 mb-4">
+                            Click to browse or drag and drop an image
+                        </p>
+                        <button class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                            Choose File
+                        </button>
+                        <input type="file" id="fileInput" accept="image/*" class="hidden">
+                    </div>
+                    <div class="text-sm text-gray-500">
+                        Supported formats: PNG, JPG, JPEG, WEBP (Max 16MB)
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Image Preview Section -->
+        <section id="previewSection" class="max-w-2xl mx-auto mb-8 hidden">
+            <div class="glass-effect rounded-2xl shadow-xl p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Product Image</h3>
+                <div class="relative">
+                    <img id="previewImage" src="" alt="Product preview" class="w-full rounded-lg shadow-md">
+                    <button id="clearBtn" class="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <button id="analyzeBtn" class="w-full mt-4 bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors">
+                    Analyze Product
+                </button>
+            </div>
+        </section>
+
+        <!-- Loading Section -->
+        <section id="loadingSection" class="max-w-2xl mx-auto mb-8 hidden">
+            <div class="glass-effect rounded-2xl shadow-xl p-8 text-center">
+                <div class="pulse-animation">
+                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-blue-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">Analyzing Product...</h3>
+                    <p class="text-gray-600">Our AI is examining the product for authenticity</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section id="resultsSection" class="max-w-2xl mx-auto hidden">
+            <div class="glass-effect rounded-2xl shadow-xl p-6 result-card">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Analysis Results</h3>
+                
+                <!-- Main Result -->
+                <div id="mainResult" class="mb-6">
+                    <!-- Result will be inserted here -->
+                </div>
+
+                <!-- Confidence Score -->
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-medium text-gray-700">Confidence Score</span>
+                        <span id="confidencePercentage" class="text-sm font-bold text-gray-900">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                        <div id="confidenceBar" class="confidence-bar h-full bg-gradient-to-r from-blue-500 to-green-500 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- All Probabilities -->
+                <div class="mb-6">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">Class Probabilities</h4>
+                    <div id="probabilityBreakdown" class="space-y-2">
+                        <!-- Probabilities will be inserted here -->
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex space-x-3">
+                    <button id="newAnalysisBtn" class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                        Analyze Another Product
+                    </button>
+                    <button id="shareResultsBtn" class="flex-1 bg-gray-600 text-white py-3 rounded-lg font-medium hover:bg-gray-700 transition-colors">
+                        Share Results
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Error Section -->
+        <section id="errorSection" class="max-w-2xl mx-auto mb-8 hidden">
+            <div class="glass-effect rounded-2xl shadow-xl p-6 border-2 border-red-200">
+                <div class="flex items-center mb-4">
+                    <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mr-4">
+                        <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800">Analysis Failed</h3>
+                        <p id="errorMessage" class="text-gray-600">An error occurred during analysis.</p>
+                    </div>
+                </div>
+                <button id="retryBtn" class="w-full bg-red-600 text-white py-3 rounded-lg font-medium hover:bg-red-700 transition-colors">
+                    Try Again
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="glass-effect mt-auto">
+        <div class="container mx-auto px-4 py-6">
+            <div class="text-center text-gray-600">
+                <p class="mb-2">TrustTag - AI Counterfeit Detection System</p>
+                <p class="text-sm">Powered by Machine Learning • Accuracy may vary</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // DOM Elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const previewSection = document.getElementById('previewSection');
+        const previewImage = document.getElementById('previewImage');
+        const clearBtn = document.getElementById('clearBtn');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const loadingSection = document.getElementById('loadingSection');
+        const resultsSection = document.getElementById('resultsSection');
+        const errorSection = document.getElementById('errorSection');
+        const errorMessage = document.getElementById('errorMessage');
+        const retryBtn = document.getElementById('retryBtn');
+        const newAnalysisBtn = document.getElementById('newAnalysisBtn');
+
+        // State
+        let currentFile = null;
+
+        // Event Listeners
+        uploadArea.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFileSelect);
+        clearBtn.addEventListener('click', clearImage);
+        analyzeBtn.addEventListener('click', analyzeImage);
+        retryBtn.addEventListener('click', resetUI);
+        newAnalysisBtn.addEventListener('click', resetUI);
+
+        // Drag and Drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        // Functions
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+
+        function handleFile(file) {
+            // Validate file type
+            if (!file.type.startsWith('image/')) {
+                showError('Please select a valid image file.');
+                return;
+            }
+
+            // Validate file size (16MB)
+            if (file.size > 16 * 1024 * 1024) {
+                showError('File size must be less than 16MB.');
+                return;
+            }
+
+            currentFile = file;
+            showImagePreview(file);
+        }
+
+        function showImagePreview(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImage.src = e.target.result;
+                previewSection.classList.remove('hidden');
+                uploadArea.parentElement.classList.add('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearImage() {
+            currentFile = null;
+            fileInput.value = '';
+            previewSection.classList.add('hidden');
+            uploadArea.parentElement.classList.remove('hidden');
+            resetResults();
+        }
+
+        async function analyzeImage() {
+            if (!currentFile) return;
+
+            // Show loading
+            loadingSection.classList.remove('hidden');
+            previewSection.classList.add('hidden');
+            resetResults();
+
+            try {
+                const formData = new FormData();
+                formData.append('image', currentFile);
+
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showResults(result);
+                } else {
+                    showError(result.error || 'Analysis failed. Please try again.');
+                }
+            } catch (error) {
+                showError('Network error. Please check your connection and try again.');
+            } finally {
+                loadingSection.classList.add('hidden');
+            }
+        }
+
+        function showResults(result) {
+            const mainResult = document.getElementById('mainResult');
+            const confidencePercentage = document.getElementById('confidencePercentage');
+            const confidenceBar = document.getElementById('confidenceBar');
+            const probabilityBreakdown = document.getElementById('probabilityBreakdown');
+
+            // Determine result type and styling
+            const isAuthentic = result.predicted_class !== 'counterfeit';
+            const resultClass = isAuthentic ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50';
+            const iconClass = isAuthentic ? 'text-green-600' : 'text-red-600';
+            const statusText = isAuthentic ? 'Authentic Product' : 'Counterfeit Detected';
+            const statusIcon = isAuthentic ? '✓' : '⚠';
+
+            // Main result
+            mainResult.innerHTML = `
+                <div class="border-2 ${resultClass} rounded-lg p-4">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 ${iconClass.replace('text', 'bg').replace('-600', '-100')} rounded-full flex items-center justify-center mr-4">
+                            <span class="text-2xl">${statusIcon}</span>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-semibold text-gray-800">${statusText}</h4>
+                            <p class="text-gray-600">Class: ${result.predicted_class.charAt(0).toUpperCase() + result.predicted_class.slice(1)}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Confidence score
+            const confidence = result.confidence * 100;
+            confidencePercentage.textContent = `${confidence.toFixed(1)}%`;
+            setTimeout(() => {
+                confidenceBar.style.width = `${confidence}%`;
+            }, 100);
+
+            // Probability breakdown
+            probabilityBreakdown.innerHTML = '';
+            Object.entries(result.all_probabilities).forEach(([className, probability]) => {
+                const probPercentage = probability * 100;
+                const displayName = className.charAt(0).toUpperCase() + className.slice(1);
+                const isMax = probability === Math.max(...Object.values(result.all_probabilities));
+                
+                probabilityBreakdown.innerHTML += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium ${isMax ? 'text-gray-900' : 'text-gray-600'}">${displayName}</span>
+                        <div class="flex items-center">
+                            <div class="w-24 bg-gray-200 rounded-full h-2 mr-2">
+                                <div class="h-full bg-blue-500 rounded-full" style="width: ${probPercentage}%"></div>
+                            </div>
+                            <span class="text-sm ${isMax ? 'font-bold' : ''}">${probPercentage.toFixed(1)}%</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Show results section
+            resultsSection.classList.remove('hidden');
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorSection.classList.remove('hidden');
+            loadingSection.classList.add('hidden');
+            previewSection.classList.add('hidden');
+        }
+
+        function resetUI() {
+            clearImage();
+            resetResults();
+            errorSection.classList.add('hidden');
+            uploadArea.parentElement.classList.remove('hidden');
+        }
+
+        function resetResults() {
+            resultsSection.classList.add('hidden');
+            errorSection.classList.add('hidden');
+            loadingSection.classList.add('hidden');
+        }
+
+        // Share functionality
+        document.getElementById('shareResultsBtn').addEventListener('click', async () => {
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: 'TrustTag Analysis Results',
+                        text: 'I just analyzed a product using TrustTag AI!',
+                        url: window.location.href
+                    });
+                } catch (error) {
+                    console.log('Share cancelled or failed');
+                }
+            } else {
+                // Fallback: copy to clipboard
+                navigator.clipboard.writeText(window.location.href);
+                alert('Link copied to clipboard!');
+            }
+        });
+    </script>
+</body>
+</html>
